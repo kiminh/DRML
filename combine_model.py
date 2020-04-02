@@ -47,7 +47,7 @@ class rnn_model(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, input, hidden):
-        combined = torch.cat((input,hidden), 1)
+        combined = torch.cat((input[:,-1,:],hidden[:,-1,:]), 1)
         hidden = self.i2h(combined)
         output = self.i2o(combined)
         output = self.sigmoid(output)
@@ -220,19 +220,25 @@ if __name__ == "__main__":
                     query_set_y = user_data[user][3]
                     train_x = torch.cat((support_set_x, query_set_x),dim=0)
                     train_y = torch.cat((support_set_y, query_set_y),dim=0)
-                    hidden=user_dynamics[user]
-                    input=torch.mean(train_x,dim=0)
+                    hidden_rep=user_dynamics[user]
+                    # input=torch.mean(train_x,dim=0)
                     train_x=train_x.cuda()
                     train_y=train_y.cuda()
-                    hidden=torch.reshape(hidden,(1,96)).cuda()
-                    input = input.cuda()
-                    hidden_res = rnn_mod(input, hidden)
+                    h_list=[]
+                    for l in range(len(train_x)):
+                        h_list.append(hidden_rep)
+                    hidden=torch.stack(h_list)
+                    hidden=hidden.cuda()
+                    # input = input.cuda()
+                    hidden_res = rnn_mod(train_x, hidden)
+                    hidden_res=torch.mean(hidden_res,dim=0)
+                    hidden_res=torch.reshape(hidden_res,(1,96))
                     hidden_res = hidden_res.cuda()
                     y_pred_1 = torch.matmul(train_x, hidden_res.t())
                     y_pred_2 = torch.matmul(train_x, time_specific_user[user].t())
                     y_pred = y_pred_1 + y_pred_2
                     loss = criterion(y_pred.view(-1, 1), train_y)
-                    optimizer = optim.Adam(rnn_mod.parameters(), lr=1e-4)
+                    optimizer = optim.Adam(rnn_mod.parameters(), lr=5e-4)
                     optimizer.zero_grad()
                     loss.backward(retain_graph=True)
                     optimizer.step()
@@ -243,14 +249,14 @@ if __name__ == "__main__":
                 rn_loss=sum(rnn_loss)/len(rnn_loss)
 
                 # print('RNN loss at epoch {}={}'.format(epoch, rn_loss))
-                if epoch%25==0:
-                    print('RNN loss at epoch {}={}'.format(epoch,rn_loss))
+                if epoch%10==0:
+                    print('RNN loss at epoch {}={}'.format(epoch+1,rn_loss))
                 epoch+=1
-                if previous_loss <= rn_loss or epoch==300:
+                if previous_loss <= rn_loss or epoch==500:
                     break
                 previous_loss = rn_loss
 
-        if period<=2:
+        if period<=5:
             epoch=0
             previous_loss = 999
             while True:
@@ -264,9 +270,9 @@ if __name__ == "__main__":
                     training_loss.append(loss)
                     time_specific_user[user]=time_spec_usr
                 t_loss=sum(training_loss) / len(training_loss)
-                if epoch%25==0:
-                    print('Meta Training Loss for epoch {}= {}'.format(epoch, t_loss))
-                if t_loss >= previous_loss or epoch==300:
+                if epoch%10==0:
+                    print('Meta Training Loss for epoch {}= {}'.format(epoch+1, t_loss))
+                if t_loss >= previous_loss or epoch==500:
                     print('Meta Training Loss={}'.format(previous_loss))
                     break
                 else:
@@ -295,4 +301,4 @@ if __name__ == "__main__":
         else:
             break
 
-    print()
+  
